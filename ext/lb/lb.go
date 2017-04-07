@@ -19,6 +19,7 @@ import (
 	ntypes "github.com/docker/engine-api/types/network"
 	"github.com/ehazlett/interlock/config"
 	"github.com/ehazlett/interlock/ext"
+	"github.com/ehazlett/interlock/ext/lb/generic"
 	"github.com/ehazlett/interlock/ext/lb/haproxy"
 	"github.com/ehazlett/interlock/ext/lb/nginx"
 	"github.com/ehazlett/interlock/utils"
@@ -48,6 +49,7 @@ type LoadBalancerBackend interface {
 	ConfigPath() string
 	GenerateProxyConfig(c []types.Container) (interface{}, error)
 	Template() string
+	NeedsReload() bool
 	Reload(proxyContainers []types.Container) error
 }
 
@@ -138,6 +140,12 @@ func NewLoadBalancer(c *config.ExtensionConfig, client *client.Client) (*LoadBal
 			return nil, fmt.Errorf("error setting backend: %s", err)
 		}
 		extension.backend = p
+	case "generic":
+		p, err := generic.NewGenericLoadBalancer(c, client)
+		if err != nil {
+			return nil, fmt.Errorf("error setting backend: %s", err)
+		}
+		extension.backend = p
 	default:
 		return nil, fmt.Errorf("unknown load balancer backend: %s", c.Name)
 	}
@@ -218,6 +226,9 @@ func NewLoadBalancer(c *config.ExtensionConfig, client *client.Client) (*LoadBal
 				continue
 			}
 
+			if !extension.backend.NeedsReload() {
+				continue
+			}
 			// save proxy config
 			configPath := extension.backend.ConfigPath()
 			log().Debugf("proxy config path: %s", configPath)
